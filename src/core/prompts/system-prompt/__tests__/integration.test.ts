@@ -166,10 +166,7 @@ const baseContext: SystemPromptContext = {
 	providerInfo: mockProviderInfo,
 }
 
-const makeMockContext = (modelId: string, providerId: string = "test"): SystemPromptContext => ({
-	...baseContext,
-	providerInfo: makeMockProviderInfo(modelId, providerId),
-})
+// (makeMockContext helper removed - direct construction used inline)
 
 describe("Prompt System Integration Tests", () => {
 	beforeEach(() => {
@@ -224,14 +221,21 @@ describe("Prompt System Integration Tests", () => {
 
 	// Generate snapshots for all model/context combinations
 	describe("Snapshot Testing", () => {
+		// Primary (compiled) snapshot directory - when using precompiled tests this lives under out/unit/...
 		const snapshotsDir = path.join(__dirname, "__snapshots__")
+		// Fallback to source snapshot directory when running compiled JS that hasn't copied snapshot files over.
+		// Replace the leading out/unit/src segment with src to point back to original sources.
+		const sourceSnapshotsDir = (() => {
+			const replaced = __dirname.replace(/[\\/]out[\\/]unit[\\/]src/, path.sep + "src")
+			return path.join(replaced, "__snapshots__")
+		})()
 
 		before(async () => {
-			// Ensure snapshots directory exists
+			// Ensure compiled snapshots dir exists so update mode can write there if requested
 			try {
 				await fs.mkdir(snapshotsDir, { recursive: true })
 			} catch {
-				// Directory might already exist
+				/* ignore */
 			}
 		})
 
@@ -266,28 +270,48 @@ describe("Prompt System Integration Tests", () => {
 								} else {
 									// Test mode: compare with existing snapshot
 									try {
-										const existingSnapshot = await fs.readFile(snapshotPath, "utf-8")
-										const differences = compareStrings(existingSnapshot, prompt)
+										// Try compiled snapshot path first
+										let existingSnapshot: string | undefined
+										let activeSnapshotPath = snapshotPath
+										try {
+											existingSnapshot = await fs.readFile(snapshotPath, "utf-8")
+										} catch (readErr: any) {
+											if (readErr?.code === "ENOENT") {
+												// Fallback to source snapshots directory
+												const fallback = path.join(sourceSnapshotsDir, snapshotName)
+												try {
+													existingSnapshot = await fs.readFile(fallback, "utf-8")
+													activeSnapshotPath = fallback
+												} catch (fallbackErr: any) {
+													if (fallbackErr?.code === "ENOENT") {
+														throw new Error(
+															formatSnapshotError(
+																snapshotName,
+																`Snapshot file does not exist: ${fallback}\nThis is a new test case. Run with --update-snapshots to create the initial snapshot.`,
+															),
+														)
+													}
+													throw fallbackErr
+												}
+											} else {
+												throw readErr
+											}
+										}
 
+										if (!existingSnapshot) {
+											throw new Error("Failed to load snapshot: " + snapshotName)
+										}
+
+										const differences = compareStrings(existingSnapshot, prompt)
 										if (differences) {
 											throw new Error(formatSnapshotError(snapshotName, differences))
 										}
-
-										console.log(`✓ Snapshot matches: ${snapshotName}`)
+										console.log(
+											`✓ Snapshot matches: ${snapshotName} (from ${activeSnapshotPath.includes("out" + path.sep + "unit") ? "compiled" : "source"} dir)`,
+										) // diagnostic
 									} catch (error) {
-										if (error instanceof Error && (error as any).code === "ENOENT") {
-											// Snapshot doesn't exist
-											throw new Error(
-												formatSnapshotError(
-													snapshotName,
-													`Snapshot file does not exist: ${snapshotPath}\n` +
-														`This is a new test case. Run with --update-snapshots to create the initial snapshot.`,
-												),
-											)
-										} else {
-											// Re-throw comparison errors
-											throw error
-										}
+										// Re-throw comparison errors
+										throw error
 									}
 								}
 							} catch (error) {

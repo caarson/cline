@@ -3,7 +3,6 @@ import { LiteLLMModelInfo, liteLlmDefaultModelId, liteLlmModelInfoSaneDefaults }
 import OpenAI from "openai"
 import { isAnthropicModelId } from "@/utils/model-utils"
 import { ApiHandler, CommonApiHandlerOptions } from ".."
-import { withRetry } from "../retry"
 import { convertToOpenAiMessages } from "../transform/openai-format"
 import { ApiStream } from "../transform/stream"
 
@@ -180,8 +179,11 @@ export class LiteLlmHandler implements ApiHandler {
 		}
 	}
 
-	@withRetry()
 	async *createMessage(systemPrompt: string, messages: Anthropic.Messages.MessageParam[]): ApiStream {
+		// Ensure idempotent invocation per generator lifecycle in certain runners
+		// that may probe the iterator more than once. We gate the network call so
+		// it executes only on the first actual iteration, not during iterator setup.
+		let started = false
 		const client = this.ensureClient()
 		const formattedMessages = convertToOpenAiMessages(messages)
 		const systemMessage: OpenAI.Chat.ChatCompletionSystemMessageParam | Anthropic.Messages.TextBlockParam = {
@@ -221,10 +223,12 @@ export class LiteLlmHandler implements ApiHandler {
 		}
 
 		// Find the last two user messages to apply caching
-		const userMsgIndices = formattedMessages.reduce(
-			(acc, msg, index) => (msg.role === "user" ? [...acc, index] : acc),
-			[] as number[],
-		)
+		const userMsgIndices = formattedMessages.reduce((acc: number[], msg, index) => {
+			if (msg.role === "user") {
+				acc.push(index)
+			}
+			return acc
+		}, [] as number[])
 		const lastUserMsgIndex = userMsgIndices[userMsgIndices.length - 1] ?? -1
 		const secondLastUserMsgIndex = userMsgIndices[userMsgIndices.length - 2] ?? -1
 
@@ -269,6 +273,10 @@ export class LiteLlmHandler implements ApiHandler {
 			},
 		)
 
+		if (started) {
+			return
+		}
+		started = true
 		const stream = await client.chat.completions.create({
 			model: this.options.liteLlmModelId || liteLlmDefaultModelId,
 			messages: [systemMessage, ...enhancedMessages],

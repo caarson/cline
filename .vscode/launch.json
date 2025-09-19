@@ -143,11 +143,15 @@
 			],
 			"args": [
 				"--require",
-				"ts-node/register",
+				"ts-node/register/transpile-only",
+				"--require",
+				"tsconfig-paths/register",
 				"--require",
 				"source-map-support/register",
 				"--require",
-				"./src/test/requires.ts",
+				"./src/test/requires.cjs",
+				"--extension",
+				"ts",
 				"--exit",
 				"${file}"
 			],

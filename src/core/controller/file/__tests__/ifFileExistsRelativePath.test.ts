@@ -10,7 +10,6 @@ describe("ifFileExistsRelativePath", () => {
 	let sandbox: sinon.SinonSandbox
 	let mockController: Controller
 	let getWorkspacePathStub: sinon.SinonStub
-	let consoleErrorStub: sinon.SinonStub
 
 	beforeEach(() => {
 		sandbox = sinon.createSandbox()
@@ -21,12 +20,13 @@ describe("ifFileExistsRelativePath", () => {
 		// Stub getWorkspacePath utility
 		getWorkspacePathStub = sandbox.stub(pathUtils, "getWorkspacePath")
 
-		// Stub console.error to prevent test output pollution
-		consoleErrorStub = sandbox.stub(console, "error")
+		// Capture errors through global sink for reliable assertions
+		;(globalThis as any).__testErrorSink = (..._args: any[]) => {}
 	})
 
 	afterEach(() => {
 		sandbox.restore()
+		delete (globalThis as any).__testErrorSink
 	})
 
 	it("should return BooleanResponse with boolean value", async () => {
@@ -48,7 +48,8 @@ describe("ifFileExistsRelativePath", () => {
 
 		for (const workspaceValue of noWorkspaceScenarios) {
 			getWorkspacePathStub.resolves(workspaceValue)
-			consoleErrorStub.resetHistory()
+			const errorCalls: any[] = []
+			;(globalThis as any).__testErrorSink = (...args: any[]) => errorCalls.push(args)
 
 			const request = StringRequest.create({
 				value: "src/test.ts",
@@ -57,7 +58,7 @@ describe("ifFileExistsRelativePath", () => {
 			const result = await ifFileExistsRelativePath(mockController, request)
 
 			expect(result).to.deep.equal(BooleanResponse.create({ value: false }))
-			expect(consoleErrorStub.called).to.be.true
+			expect(errorCalls.length).to.be.greaterThan(0)
 		}
 	})
 

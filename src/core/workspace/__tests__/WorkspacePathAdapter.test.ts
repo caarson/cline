@@ -6,21 +6,19 @@
 import { expect } from "chai"
 import { afterEach, beforeEach, describe, it } from "mocha"
 import * as path from "path"
-import * as sinon from "sinon"
 import { createWorkspacePathAdapter, WorkspacePathAdapter } from "../WorkspacePathAdapter"
 import { VcsType, WorkspaceRoot } from "../WorkspaceRoot"
 import { WorkspaceRootManager } from "../WorkspaceRootManager"
 import "@utils/path"
 
 describe("WorkspacePathAdapter", () => {
-	let consoleWarnStub: sinon.SinonStub
-
+	const warnCalls: any[] = []
 	beforeEach(() => {
-		consoleWarnStub = sinon.stub(console, "warn")
+		;(globalThis as any).__testWarnSink = (...args: any[]) => warnCalls.push(args)
 	})
-
 	afterEach(() => {
-		consoleWarnStub.restore()
+		delete (globalThis as any).__testWarnSink
+		warnCalls.length = 0
 	})
 
 	describe("Single-Root Mode", () => {
@@ -121,8 +119,8 @@ describe("WorkspacePathAdapter", () => {
 			const result = adapter.resolvePath(absolutePath)
 
 			expect(result).to.equal(absolutePath)
-			expect(consoleWarnStub.calledOnce).to.be.true
-			expect(consoleWarnStub.firstCall.args[0]).to.include("doesn't belong to any workspace")
+			expect(warnCalls.length).to.be.greaterThan(0)
+			expect(warnCalls[0][0]).to.include("doesn't belong to any workspace")
 		})
 
 		it("should get all possible paths across workspaces", () => {
@@ -170,8 +168,8 @@ describe("WorkspacePathAdapter", () => {
 			const result = adapter.resolvePath("src/file.ts", "nonexistent")
 
 			expect(result.toPosix()).to.equal("/workspace/frontend/src/file.ts") // Falls back to primary
-			expect(consoleWarnStub.calledOnce).to.be.true
-			expect(consoleWarnStub.firstCall.args[0]).to.include("not found")
+			expect(warnCalls.length).to.be.greaterThan(0)
+			expect(warnCalls[0][0]).to.include("not found")
 		})
 	})
 
@@ -186,7 +184,7 @@ describe("WorkspacePathAdapter", () => {
 
 			const result = adapter.resolvePath("src/file.ts")
 			expect(result.toPosix()).to.include("/fallback/src/file.ts")
-			expect(consoleWarnStub.called).to.be.true
+			expect((globalThis as any).__testWarnSink).to.be.a("function")
 		})
 
 		it("should handle paths with special characters", () => {

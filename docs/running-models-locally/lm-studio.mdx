@@ -71,8 +71,53 @@ Run AI models locally using LM Studio with Cline.
 <Frame>
 	<img
 		src="https://storage.googleapis.com/cline_public_images/docs/assets/lm-studio-select-model-cline.gif"
+
+### 🧬 Using GPT-OSS Models (New)
+
+You can now run the open-source `gpt-oss` family locally through LM Studio and use it in Cline with the existing **LM Studio** provider—no additional provider changes required.
+
+#### Supported IDs
+
+- `openai/gpt-oss-20b` – Smaller, fits on high-end consumer GPUs / Apple Silicon (≥16GB VRAM recommended)
+- `openai/gpt-oss-120b` – Larger, intended for multi-GPU or high-memory setups (≥60GB VRAM)
+
+#### Quick CLI Workflow
+
+```bash
+# Download (choose one)
 		alt="Configuring Cline with LM Studio"
 	/>
+lms get openai/gpt-oss-120b
+
+# Load the model
+lms load openai/gpt-oss-20b
+
+# (Optional) Start chat via CLI
+lms chat openai/gpt-oss-20b
+```
+
+#### Enable the Local API Server
+1. Open LM Studio → Developer tab → Start the server (defaults to `http://localhost:1234`)
+2. Ensure the model is loaded (shows as Active)
+
+#### Configure in Cline
+1. Open Cline settings → Select provider: **LM Studio**
+2. If the model appears in the dropdown, select it. (Cline polls `api/v0/models`.)
+3. If it does not appear yet (e.g. during initial load), manually enter the model ID: `openai/gpt-oss-20b`
+4. Start a task—Cline will stream responses via the OpenAI-compatible Chat Completions endpoint exposed by LM Studio.
+
+#### Notes & Tips
+- If you change the loaded model in LM Studio, re-open the Cline settings panel to refresh the list.
+- Large context failures usually mean the model was loaded with a smaller context length—reload with a larger setting or enable Compact Prompt in Cline.
+- Reasoning/tool-calling features of GPT-OSS via LM Studio are limited to what LM Studio's OpenAI-compatible streaming provides; advanced `.act()` style local tool loops in LM Studio's own SDK are separate from Cline’s tool orchestration.
+- No API key is required; Cline uses a placeholder when calling the local server.
+
+#### Troubleshooting
+- Empty dropdown: Confirm the LM Studio server is running and the model is fully loaded.
+- Connection error: Verify the base URL (override in settings if not `http://localhost:1234`).
+- Slow generation: Use the 20B model or a lower quantization variant if VRAM is constrained.
+
+> GPT-OSS integration leverages the existing LM Studio provider—so you get this support automatically with minimal changes.
 </Frame>
 
 ### ⚠️ Important Notes

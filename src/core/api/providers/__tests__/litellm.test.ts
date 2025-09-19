@@ -68,6 +68,8 @@ describe("LiteLlmHandler", () => {
 
 	afterEach(() => {
 		sinon.reset()
+		// Ensure the shared stub doesn't leak call counts across tests
+		fakeClient.chat.completions.create.resetHistory()
 
 		global.fetch = originalFetch
 	})

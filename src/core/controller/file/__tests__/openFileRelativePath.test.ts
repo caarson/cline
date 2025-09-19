@@ -13,7 +13,6 @@ describe("openFileRelativePath", () => {
 	let mockController: Controller
 	let openFileIntegrationStub: sinon.SinonStub
 	let getWorkspacePathStub: sinon.SinonStub
-	let consoleErrorStub: sinon.SinonStub
 
 	beforeEach(() => {
 		sandbox = sinon.createSandbox()
@@ -27,12 +26,13 @@ describe("openFileRelativePath", () => {
 		// Stub getWorkspacePath utility
 		getWorkspacePathStub = sandbox.stub(pathUtils, "getWorkspacePath")
 
-		// Stub console.error to prevent test output pollution
-		consoleErrorStub = sandbox.stub(console, "error")
+		// Capture errors through global sink for reliable assertions
+		;(globalThis as any).__testErrorSink = (..._args: any[]) => {}
 	})
 
 	afterEach(() => {
 		sandbox.restore()
+		delete (globalThis as any).__testErrorSink
 	})
 
 	it("should return Empty response on successful execution", async () => {
@@ -85,7 +85,8 @@ describe("openFileRelativePath", () => {
 
 		for (const workspaceValue of noWorkspaceScenarios) {
 			getWorkspacePathStub.resolves(workspaceValue)
-			consoleErrorStub.resetHistory()
+			const errorCalls: any[] = []
+			;(globalThis as any).__testErrorSink = (...args: any[]) => errorCalls.push(args)
 
 			const request = StringRequest.create({
 				value: "src/test.ts",
@@ -94,7 +95,7 @@ describe("openFileRelativePath", () => {
 			const result = await openFileRelativePath(mockController, request)
 
 			expect(result).to.deep.equal(Empty.create())
-			expect(consoleErrorStub.called).to.be.true
+			expect(errorCalls.length).to.be.greaterThan(0)
 			expect(openFileIntegrationStub.called).to.be.false
 		}
 	})

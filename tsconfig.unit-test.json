@@ -2,7 +2,9 @@
 	"extends": "./tsconfig.json",
 	"compilerOptions": {
 		"module": "commonjs",
-		"moduleResolution": "node"
+		"moduleResolution": "node",
+		"skipLibCheck": true,
+		"noEmit": false
 	},
 	"ts-node": {
 		"require": [

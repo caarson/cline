@@ -138,7 +138,8 @@ export const LMStudioProvider = ({ currentMode }: LMStudioProviderProps) => {
 							currentMode,
 						)
 					}
-					placeholder={"e.g. meta-llama-3.1-8b-instruct"}
+					// Combined prior duplicate placeholders into one to avoid duplicate attribute error
+					placeholder={"e.g. meta-llama-3.1-8b-instruct or openai/gpt-oss-20b"}
 					style={{ width: "100%" }}
 				/>
 			)}

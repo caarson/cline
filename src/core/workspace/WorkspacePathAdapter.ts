@@ -8,6 +8,7 @@
  */
 
 import * as path from "path"
+import { log } from "@/utils/log"
 import { resolveWorkspacePath } from "./WorkspaceResolver"
 import type { WorkspaceRootManager } from "./WorkspaceRootManager"
 
@@ -20,13 +21,6 @@ export interface WorkspaceAdapterConfig {
 export class WorkspacePathAdapter {
 	constructor(private config: WorkspaceAdapterConfig) {}
 
-	/**
-	 * Resolves a path using either single-root or multi-root logic
-	 *
-	 * @param relativePath - The path to resolve (can be relative or absolute)
-	 * @param workspaceHint - Optional hint for which workspace to use (name or path)
-	 * @returns The resolved absolute path
-	 */
 	resolvePath(relativePath: string, workspaceHint?: string): string {
 		// Single-root mode (backward compatible)
 		if (!this.config.isMultiRootEnabled || !this.config.workspaceManager) {
@@ -42,7 +36,7 @@ export class WorkspacePathAdapter {
 			const root = manager.resolvePathToRoot(relativePath)
 			if (!root) {
 				// Path doesn't belong to any workspace, but return it anyway
-				console.warn(`[WorkspacePathAdapter] Absolute path ${relativePath} doesn't belong to any workspace`)
+				log.warn(`[WorkspacePathAdapter] Absolute path ${relativePath} doesn't belong to any workspace`)
 			}
 			return relativePath
 		}
@@ -62,7 +56,7 @@ export class WorkspacePathAdapter {
 				return path.join(root.path, relativePath)
 			}
 
-			console.warn(`[WorkspacePathAdapter] Workspace hint '${workspaceHint}' not found, using primary workspace`)
+			log.warn(`[WorkspacePathAdapter] Workspace hint '${workspaceHint}' not found, using primary workspace`)
 		}
 
 		// Default to primary workspace
@@ -72,7 +66,7 @@ export class WorkspacePathAdapter {
 		}
 
 		// Fallback to cwd if no roots (shouldn't happen, but defensive)
-		console.warn(`[WorkspacePathAdapter] No workspace roots found, falling back to cwd`)
+		log.warn(`[WorkspacePathAdapter] No workspace roots found, falling back to cwd`)
 		return resolveWorkspacePath(this.config.cwd, relativePath, "WorkspacePathAdapter-fallback") as string
 	}
 

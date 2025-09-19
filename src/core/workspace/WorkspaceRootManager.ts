@@ -3,7 +3,12 @@
  * This class handles workspace root resolution, path mapping, and workspace context
  */
 
-import { execa } from "execa"
+// execa is ESM; during unit tests under ts-node (CJS) we need a dynamic loader
+const execa = async (...args: any[]) => {
+	const mod: any = await import("execa")
+	return (mod.execa || mod.default)(...args)
+}
+
 import * as path from "path"
 import { getLatestGitCommitHash } from "../../utils/git"
 import { VcsType, WorkspaceRoot } from "./WorkspaceRoot"

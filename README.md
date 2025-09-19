@@ -53,6 +53,8 @@ Thanks to [Claude Sonnet's agentic coding capabilities](https://www.anthropic.c
 
 Cline supports API providers like OpenRouter, Anthropic, OpenAI, Google Gemini, AWS Bedrock, Azure, GCP Vertex, Cerebras and Groq. You can also configure any OpenAI compatible API, or use a local model through LM Studio/Ollama. If you're using OpenRouter, the extension fetches their latest model list, allowing you to use the newest models as soon as they're available.
 
+> New: You can run the open-source `gpt-oss` models locally via the existing LM Studio provider. Load `openai/gpt-oss-20b` (or the larger `openai/gpt-oss-120b`) in LM Studio, start its local server, then pick the LM Studio provider in Cline and select or paste the model ID—no extra configuration required.
+
 The extension also keeps track of total tokens and API usage cost for the entire task loop and individual requests, keeping you informed of spend every step of the way.
 
 <!-- Transparent pixel to create line break after floating image -->

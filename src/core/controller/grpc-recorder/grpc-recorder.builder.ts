@@ -37,20 +37,22 @@ export class GrpcRecorderBuilder {
 		return this
 	}
 
-	// Initialize the recorder as a singleton
-	private static recorder: IRecorder
+	// Cache recorders per controller to avoid cross-test/state bleed
+	private static recorders: WeakMap<Controller, IRecorder> = new WeakMap()
 
 	/**
 	 * Gets or creates the GrpcRecorder instance
 	 */
 	static getRecorder(controller: Controller): IRecorder {
-		if (!GrpcRecorderBuilder.recorder) {
-			GrpcRecorderBuilder.recorder = GrpcRecorder.builder()
+		let recorder = GrpcRecorderBuilder.recorders.get(controller)
+		if (!recorder) {
+			recorder = GrpcRecorder.builder()
 				.enableIf(process.env.GRPC_RECORDER_ENABLED === "true" && process.env.CLINE_ENVIRONMENT === "local")
 				.withLogFileHandler(new LogFileHandler())
 				.build(controller)
+			GrpcRecorderBuilder.recorders.set(controller, recorder)
 		}
-		return GrpcRecorderBuilder.recorder
+		return recorder
 	}
 
 	public build(controller?: Controller): IRecorder {

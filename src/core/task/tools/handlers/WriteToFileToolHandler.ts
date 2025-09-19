@@ -24,6 +24,31 @@ export class WriteToFileToolHandler implements IFullyManagedTool {
 
 	constructor(private validator: ToolValidator) {}
 
+	// Detects attempts to create a todo/checklist-like text file that should instead be provided via <task_progress>
+	private looksLikeTodoChecklist(relPath: string, content?: string): boolean {
+		const lowerPath = (relPath || "").toLowerCase()
+		const isTextual =
+			lowerPath.endsWith(".txt") || lowerPath.endsWith(".md") || lowerPath.endsWith("readme") || lowerPath.includes("todo")
+		if (!isTextual) {
+			return false
+		}
+		if (typeof content !== "string") {
+			return false
+		}
+		const sample = content.slice(0, 4000)
+		const checklistPatterns = [
+			/^\s*[-*] \[[ xX]?\] /m, // markdown checkboxes
+			/^\s*[-*] /m, // bullet list
+			/^\s*\d+\.\s+/m, // numbered list
+			/^\s*todo\b[:-]?/im, // todo markers
+			/^\s*plan\b[:-]?/im, // plan markers
+			/<task_progress>/i, // tool-output artifacts
+			/<attempt_completion>/i,
+			/\bTask Completed\b/i,
+		]
+		return checklistPatterns.some((re) => re.test(sample))
+	}
+
 	getDescription(block: ToolUse): string {
 		return `[${block.name} for '${block.params.path}']`
 	}
@@ -36,6 +61,11 @@ export class WriteToFileToolHandler implements IFullyManagedTool {
 		// Early return if we don't have enough data yet
 		if (!rawRelPath || (!rawContent && !rawDiff)) {
 			// Wait until we have the path and either content or diff
+			return
+		}
+
+		// If this is an attempt to create a todo/checklist text file, do not present any file UI
+		if (block.name === "write_to_file" && rawRelPath && rawContent && this.looksLikeTodoChecklist(rawRelPath, rawContent)) {
 			return
 		}
 
@@ -87,6 +117,24 @@ export class WriteToFileToolHandler implements IFullyManagedTool {
 		const rawRelPath = block.params.path
 		const rawContent = block.params.content // for write_to_file
 		const rawDiff = block.params.diff // for replace_in_file
+		// If this is an attempt to create a todo/checklist text file, block it and instruct to use <task_progress>
+		if (block.name === "write_to_file" && rawRelPath && rawContent && this.looksLikeTodoChecklist(rawRelPath, rawContent)) {
+			return formatResponse.toolResult(
+				[
+					"Do not create a TODO file in the workspace.",
+					"Use the <task_progress> parameter to provide your checklist in the UI instead, and proceed to actual project work (e.g., create index.html, styles.css, script.js).",
+					"Example:",
+					"<task_progress>",
+					"- [ ] Analyze requirements",
+					"- [ ] Set up necessary files (index.html, styles.css, script.js)",
+					"- [ ] Implement main functionality",
+					"- [ ] Handle edge cases",
+					"- [ ] Test implementation",
+					"- [ ] Verify results",
+					"</task_progress>",
+				].join("\n"),
+			)
+		}
 
 		// Validate required parameters based on tool type
 		if (!rawRelPath) {
@@ -123,6 +171,31 @@ export class WriteToFileToolHandler implements IFullyManagedTool {
 
 			const { relPath, fileExists, diff, content, newContent } = result
 
+			// Heuristic: if creating a text/markdown file that looks like a checklist/plan, require manual approval
+			let forceManualApproval = false
+			if (!fileExists && block.name === "write_to_file") {
+				const lowerPath = relPath.toLowerCase()
+				const isTextual =
+					lowerPath.endsWith(".txt") ||
+					lowerPath.endsWith(".md") ||
+					lowerPath.endsWith("readme") ||
+					lowerPath.includes("todo")
+				if (isTextual && typeof newContent === "string") {
+					const sample = newContent.slice(0, 4000)
+					const checklistPatterns = [
+						/^\s*[-*] \[[ xX]?\] /m, // markdown checkboxes
+						/^\s*[-*] /m, // bullet list
+						/^\s*\d+\.\s+/m, // numbered list
+						/^\s*todo\b[:-]?/im, // todo markers
+						/^\s*plan\b[:-]?/im, // plan markers
+						/<task_progress>/i, // tool-output artifacts
+						/<attempt_completion>/i,
+						/\bTask Completed\b/i,
+					]
+					forceManualApproval = checklistPatterns.some((re) => re.test(sample))
+				}
+			}
+
 			// Handle approval flow
 			const sharedMessageProps: ClineSayTool = {
 				tool: fileExists ? "editedExistingFile" : "newFileCreated",
@@ -156,7 +229,7 @@ export class WriteToFileToolHandler implements IFullyManagedTool {
 				// : undefined,
 			} satisfies ClineSayTool)
 
-			if (await config.callbacks.shouldAutoApproveToolWithPath(block.name, relPath)) {
+			if (!forceManualApproval && (await config.callbacks.shouldAutoApproveToolWithPath(block.name, relPath))) {
 				// Auto-approval flow
 				await config.callbacks.removeLastPartialMessageIfExistsWithType("ask", "tool")
 				await config.callbacks.say("tool", completeMessage, undefined, undefined, false)
@@ -398,6 +471,14 @@ export class WriteToFileToolHandler implements IFullyManagedTool {
 		} else if (content) {
 			// Handle write_to_file with direct content
 			newContent = content
+
+			// Strip model artifact tokens and extract code/HTML when applicable
+			try {
+				const { sanitizeFileContent } = await import("@/utils/sanitize")
+				const ext = (relPath.split(".").pop() || "").toLowerCase()
+				const langHint = ext === "htm" || ext === "html" ? "html" : ext
+				newContent = sanitizeFileContent(newContent, langHint)
+			} catch {}
 
 			// pre-processing newContent for cases where weaker models might add artifacts like markdown codeblock markers (deepseek/llama) or extra escape characters (gemini)
 			if (newContent.startsWith("```")) {

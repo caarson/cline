@@ -85,15 +85,9 @@ describe("PromptBuilder", () => {
 				SYSTEM_INFO_SECTION: async () => "SYSTEM INFO",
 			}
 
-			// Mock console.warn to capture and verify warnings
-			const originalWarn = console.warn
-			const warnSpy = {
-				calls: [] as any[],
-				warn: (...args: any[]) => {
-					warnSpy.calls.push(args)
-				},
-			}
-			console.warn = warnSpy.warn
+			// Capture warnings via global test sink wired by log.warn
+			const warnCalls: any[] = []
+			;(globalThis as any).__testWarnSink = (...args: any[]) => warnCalls.push(args)
 
 			try {
 				const builder = new PromptBuilder(baseVariant, mockContext, incompleteComponents)
@@ -105,12 +99,11 @@ describe("PromptBuilder", () => {
 				// Missing components should not break the build
 
 				// Verify that warnings were logged for missing components
-				expect(warnSpy.calls).to.have.length(2)
-				expect(warnSpy.calls[0][0]).to.include("Warning: Component 'CAPABILITIES_SECTION' not found")
-				expect(warnSpy.calls[1][0]).to.include("Warning: Component 'RULES_SECTION' not found")
+				expect(warnCalls.length).to.equal(2)
+				expect(warnCalls[0][0]).to.include("Warning: Component 'CAPABILITIES_SECTION' not found")
+				expect(warnCalls[1][0]).to.include("Warning: Component 'RULES_SECTION' not found")
 			} finally {
-				// Restore original console.warn
-				console.warn = originalWarn
+				delete (globalThis as any).__testWarnSink
 			}
 		})
 
@@ -165,16 +158,8 @@ describe("PromptBuilder", () => {
 		})
 
 		it("should handle component errors gracefully", async () => {
-			// Mock console.warn to suppress warning output and verify it's called
-			const originalWarn = console.warn
-			const warnSpy = {
-				calls: [] as any[],
-				warn: (...args: any[]) => {
-					warnSpy.calls.push(args)
-				},
-			}
-			console.warn = warnSpy.warn
-
+			const warnCalls: any[] = []
+			;(globalThis as any).__testWarnSink = (...args: any[]) => warnCalls.push(args)
 			try {
 				const failingComponents: ComponentRegistry = {
 					TOOL_USE_SECTION: async () => "TOOL USE CONTENT",
@@ -194,11 +179,10 @@ describe("PromptBuilder", () => {
 				expect(result).to.include("TOOL USE CONTENT")
 
 				// Verify that the warning was logged for the failing component
-				expect(warnSpy.calls).to.have.length(1)
-				expect(warnSpy.calls[0][0]).to.include("Failed to build component 'SYSTEM_INFO_SECTION'")
+				expect(warnCalls.length).to.equal(1)
+				expect(warnCalls[0][0]).to.include("Failed to build component 'SYSTEM_INFO_SECTION'")
 			} finally {
-				// Restore original console.warn
-				console.warn = originalWarn
+				delete (globalThis as any).__testWarnSink
 			}
 		})
 	})

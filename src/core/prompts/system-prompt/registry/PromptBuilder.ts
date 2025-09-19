@@ -1,4 +1,5 @@
 import type { ClineDefaultTool } from "@/shared/tools"
+import { log } from "@/utils/log"
 import { getModelFamily } from "../"
 import { ClineToolSet } from "../registry/ClineToolSet"
 import type { ClineToolSpec } from "../spec"
@@ -30,12 +31,13 @@ export class PromptBuilder {
 	private async buildComponents(): Promise<Record<string, string>> {
 		const sections: Record<string, string> = {}
 		const { componentOrder } = this.variant
+		const warn = (...args: any[]) => log.warn.apply(log, args)
 
 		// Process components sequentially to maintain order
 		for (const componentId of componentOrder) {
 			const componentFn = this.components[componentId]
 			if (!componentFn) {
-				console.warn(`Warning: Component '${componentId}' not found`)
+				warn(`Warning: Component '${componentId}' not found`)
 				continue
 			}
 
@@ -45,7 +47,9 @@ export class PromptBuilder {
 					sections[componentId] = result
 				}
 			} catch (error) {
-				console.warn(`Warning: Failed to build component '${componentId}':`, error)
+				warn(
+					`Warning: Failed to build component '${componentId}': ${error instanceof Error ? error.message : String(error)}`,
+				)
 			}
 		}
 
@@ -94,14 +98,14 @@ export class PromptBuilder {
 			.trim() // Remove leading/trailing whitespace
 			.replace(/====+\s*$/, "") // Remove trailing ==== after trim
 			.replace(/\n====+\s*\n+\s*====+\n/g, "\n====\n") // Remove empty sections between separators
-			.replace(/====+\n(?!\n)([^\n])/g, (match, nextChar, offset, string) => {
+			.replace(/====+\n(?!\n)([^\n])/g, (_match, _nextChar, offset, string) => {
 				// Add extra newline after ====+ if not already followed by a newline
 				// Exception: preserve single newlines when ====+ appears to be part of diff-like content
 				// Look for patterns like "SEARCH\n=======\n" or ";\n=======\n" (diff markers)
 				const beforeContext = string.substring(Math.max(0, offset - 50), offset)
 				const afterContext = string.substring(offset, Math.min(string.length, offset + 50))
 				const isDiffLike = /SEARCH|REPLACE|\+\+\+\+\+\+\+|-------/.test(beforeContext + afterContext)
-				return isDiffLike ? match : match.replace(/\n/, "\n\n")
+				return isDiffLike ? _match : _match.replace(/\n/, "\n\n")
 			})
 			.replace(/([^\n])\n(?!\n)====+/g, (match, prevChar, offset, string) => {
 				// Add extra newline before ====+ if not already preceded by a newline

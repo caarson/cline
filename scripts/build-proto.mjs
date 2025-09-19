@@ -12,7 +12,74 @@ import { main as generateHostBridgeClient } from "./generate-host-bridge-client.
 import { main as generateProtoBusSetup } from "./generate-protobus-setup.mjs"
 
 const require = createRequire(import.meta.url)
-const PROTOC = path.join(require.resolve("grpc-tools"), "../bin/protoc")
+// We will resolve protoc dynamically (bundled -> env override -> system PATH) to
+// work around cases where the grpc-tools bundled binary crashes on some Windows setups.
+let RESOLVED_PROTOC = null
+let RESOLVED_PROTOC_VERSION = null
+
+function tryProtocVersion(p) {
+	try {
+		const out = execSync(`"${p}" --version`, { stdio: ["ignore", "pipe", "pipe"] })
+			.toString()
+			.trim()
+		if (out) return { ok: true, version: out }
+		return { ok: false, error: new Error("No version output") }
+	} catch (e) {
+		return { ok: false, error: e }
+	}
+}
+
+function locateProtoc() {
+	const candidates = []
+	// 1. Explicit override via PROTOC_PATH
+	if (process.env.PROTOC_PATH) {
+		candidates.push(path.resolve(process.env.PROTOC_PATH))
+	}
+	// 2. Bundled grpc-tools binary
+	try {
+		const bundled = path.join(require.resolve("grpc-tools"), "../bin/protoc")
+		candidates.push(bundled)
+	} catch (_) {
+		// ignore
+	}
+	// 3. System PATH (where/which)
+	try {
+		const whichCmd = process.platform === "win32" ? "where protoc" : "which protoc"
+		const sys = execSync(whichCmd, { stdio: ["ignore", "pipe", "ignore"] })
+			.toString()
+			.split(/\r?\n/)
+			.filter(Boolean)[0]
+		if (sys) candidates.push(sys)
+	} catch (_) {
+		// no system protoc
+	}
+
+	for (const c of candidates) {
+		const result = tryProtocVersion(c)
+		if (result.ok) {
+			RESOLVED_PROTOC = c
+			RESOLVED_PROTOC_VERSION = result.version
+			log_verbose(chalk.green(`[build-proto] Using protoc ${RESOLVED_PROTOC_VERSION} at ${c}`))
+			return
+		} else {
+			log_verbose(chalk.yellow(`[build-proto] Failed protoc candidate ${c}: ${result.error?.message || result.error}`))
+		}
+	}
+
+	if (!RESOLVED_PROTOC) {
+		console.error(chalk.red("[build-proto] Could not find a working protoc binary."))
+		console.error(chalk.red("Exit earlier failures may indicate an access violation (0xC0000005)."))
+		console.error(chalk.yellow("Resolution steps:"))
+		console.error("  1. Install a system protoc: e.g. via Chocolatey: 'choco install protoc' or download release zip")
+		console.error("  2. Set PROTOC_PATH to the installed protoc.exe, then re-run: PROTOC_PATH=path/to/protoc npm run protos")
+		console.error("  3. (Optional) Set SKIP_PROTOS=1 for a temporary bypass (not for full test suite).")
+		if (process.env.ALLOW_PROTO_FAILURE === "1") {
+			console.error(chalk.yellow("ALLOW_PROTO_FAILURE=1 set; skipping protoc generation and continuing."))
+			return
+		}
+		process.exit(1)
+	}
+}
 
 const PROTO_DIR = path.resolve("proto")
 const TS_OUT_DIR = path.resolve("src/shared/proto")
@@ -35,6 +102,11 @@ const TS_PROTO_OPTIONS = [
 ]
 
 async function main() {
+	// Allow skipping proto generation for faster unit test cycles or CI fallback
+	if (process.env.SKIP_PROTOS === "1") {
+		console.log(chalk.yellow("[build-proto] Skipping proto generation due to SKIP_PROTOS=1"))
+		return
+	}
 	await cleanup()
 	await compileProtos()
 	await generateProtoBusSetup()
@@ -46,6 +118,13 @@ async function compileProtos() {
 	// Check for Apple Silicon compatibility before proceeding
 	checkAppleSiliconCompatibility()
 
+	// Resolve protoc dynamically
+	locateProtoc()
+	if (!RESOLVED_PROTOC) {
+		// Already logged & maybe exited; guard for safety.
+		return
+	}
+
 	// Create output directories if they don't exist
 	for (const dir of [TS_OUT_DIR, GRPC_JS_OUT_DIR, NICE_JS_OUT_DIR, DESCRIPTOR_OUT_DIR]) {
 		await fs.mkdir(dir, { recursive: true })
@@ -55,15 +134,15 @@ async function compileProtos() {
 	const protoFiles = await globby("**/*.proto", { cwd: PROTO_DIR, realpath: true })
 	console.log(chalk.cyan(`Processing ${protoFiles.length} proto files from`), PROTO_DIR)
 
-	tsProtoc(TS_OUT_DIR, protoFiles, TS_PROTO_OPTIONS)
+	tsProtoc(RESOLVED_PROTOC, TS_OUT_DIR, protoFiles, TS_PROTO_OPTIONS)
 	// grpc-js is used to generate service impls for the ProtoBus service.
-	tsProtoc(GRPC_JS_OUT_DIR, protoFiles, ["outputServices=grpc-js", ...TS_PROTO_OPTIONS])
+	tsProtoc(RESOLVED_PROTOC, GRPC_JS_OUT_DIR, protoFiles, ["outputServices=grpc-js", ...TS_PROTO_OPTIONS])
 	// nice-js is used for the Host Bridge client impls because it uses promises.
-	tsProtoc(NICE_JS_OUT_DIR, protoFiles, ["outputServices=nice-grpc,useExactTypes=false", ...TS_PROTO_OPTIONS])
+	tsProtoc(RESOLVED_PROTOC, NICE_JS_OUT_DIR, protoFiles, ["outputServices=nice-grpc,useExactTypes=false", ...TS_PROTO_OPTIONS])
 
 	const descriptorFile = path.join(DESCRIPTOR_OUT_DIR, "descriptor_set.pb")
 	const descriptorProtocCommand = [
-		PROTOC,
+		RESOLVED_PROTOC,
 		`--proto_path="${PROTO_DIR}"`,
 		`--descriptor_set_out="${descriptorFile}"`,
 		"--include_imports",
@@ -81,10 +160,10 @@ async function compileProtos() {
 	log_verbose(chalk.green(`TypeScript files generated in: ${TS_OUT_DIR}`))
 }
 
-async function tsProtoc(outDir, protoFiles, protoOptions) {
+async function tsProtoc(protocPath, outDir, protoFiles, protoOptions) {
 	// Build the protoc command with proper path handling for cross-platform
 	const command = [
-		PROTOC,
+		protocPath,
 		`--proto_path="${PROTO_DIR}"`,
 		`--plugin=protoc-gen-ts_proto="${TS_PROTO_PLUGIN}"`,
 		`--ts_proto_out="${outDir}"`,

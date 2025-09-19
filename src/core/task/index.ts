@@ -1590,6 +1590,11 @@ export class Task {
 				}
 				let content = block.content
 				if (content) {
+					// Sanitize known LLM artifact tokens first
+					try {
+						const { sanitizeAssistantText } = await import("@/utils/sanitize")
+						content = sanitizeAssistantText(content)
+					} catch {}
 					// (have to do this for partial and complete since sending content in thinking tags to markdown renderer will automatically be removed)
 					// Remove end substrings of <thinking or </thinking (below xml parsing is only for opening tags)
 					// (this is done with the xml parsing below now, but keeping here for reference)
@@ -2077,13 +2082,23 @@ export class Task {
 							reasoningMessage += chunk.reasoning
 							// fixes bug where cancelling task > aborts task > for loop may be in middle of streaming reasoning > say function throws error before we get a chance to properly clean up and cancel the task.
 							if (!this.taskState.abort) {
-								await this.say("reasoning", reasoningMessage, undefined, undefined, true)
+								let displayReasoning = reasoningMessage
+								try {
+									const { sanitizeAssistantText } = await import("@/utils/sanitize")
+									displayReasoning = sanitizeAssistantText(displayReasoning)
+								} catch {}
+								await this.say("reasoning", displayReasoning, undefined, undefined, true)
 							}
 							break
 						case "text": {
 							if (reasoningMessage && assistantMessage.length === 0) {
 								// complete reasoning message
-								await this.say("reasoning", reasoningMessage, undefined, undefined, false)
+								let finalReasoning = reasoningMessage
+								try {
+									const { sanitizeAssistantText } = await import("@/utils/sanitize")
+									finalReasoning = sanitizeAssistantText(finalReasoning)
+								} catch {}
+								await this.say("reasoning", finalReasoning, undefined, undefined, false)
 							}
 							assistantMessage += chunk.text
 							// parse raw assistant message into content blocks

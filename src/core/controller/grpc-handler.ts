@@ -23,6 +23,7 @@ function withRecordingMiddleware(postMessage: PostMessageToWebview, controller: 
 	return async (response: ExtensionMessage) => {
 		if (response?.grpc_response) {
 			try {
+				// Use the shared recorder instance
 				GrpcRecorderBuilder.getRecorder(controller).recordResponse(
 					response.grpc_response.request_id,
 					response.grpc_response,
@@ -40,6 +41,7 @@ function withRecordingMiddleware(postMessage: PostMessageToWebview, controller: 
  */
 function recordRequest(request: GrpcRequest, controller: Controller): void {
 	try {
+		// Use the shared recorder instance
 		GrpcRecorderBuilder.getRecorder(controller).recordRequest(request)
 	} catch (e) {
 		console.warn("Failed to record gRPC request:", e)
