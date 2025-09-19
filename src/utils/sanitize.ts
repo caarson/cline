@@ -11,6 +11,8 @@ const LEADING_PATTERNS: RegExp[] = [
 	/^<\|start_header_id\|>[\s\S]*?<\|end_header_id\|>\s*/i,
 	// Odd prefix like "analysis>" or "thinking>" at the very start
 	/^\s*(?:analysis|thinking)\s*>\s*/i,
+	// Some OSS models emit a bare header word like "analysis" or "assistant" (optionally with a colon) on its own line at the top
+	/^\s*(?:analysis|assistant|reasoning|final(?:_answer)?)\s*[:：]?\s*(?:\r?\n|$)/i,
 ]
 
 /** Remove all occurrences of the known leading artifact patterns at the start of the text. */
@@ -99,6 +101,17 @@ export function sanitizeAssistantText(raw: string): string {
 	text = stripLeadingArtifacts(text)
 	text = stripThinkingTags(text)
 	text = stripInlineChatMl(text)
+	// If the remaining content is just a stray header token like "analysis"/"assistant", drop it entirely
+	const trimmed = text.trim().toLowerCase()
+	if (
+		trimmed === "analysis" ||
+		trimmed === "assistant" ||
+		trimmed === "reasoning" ||
+		trimmed === "final" ||
+		trimmed === "final_answer"
+	) {
+		return ""
+	}
 	return text
 }
 

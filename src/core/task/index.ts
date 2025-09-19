@@ -1646,6 +1646,10 @@ export class Task {
 				break
 			}
 			case "tool_use":
+				// Only execute one tool per assistant message; after a tool runs, pause and wait for next turn/user input
+				if (this.taskState.didAlreadyUseTool) {
+					break
+				}
 				await this.toolExecutor.executeTool(block)
 				break
 		}
@@ -2087,7 +2091,9 @@ export class Task {
 									const { sanitizeAssistantText } = await import("@/utils/sanitize")
 									displayReasoning = sanitizeAssistantText(displayReasoning)
 								} catch {}
-								await this.say("reasoning", displayReasoning, undefined, undefined, true)
+								if (displayReasoning.trim().length > 0) {
+									await this.say("reasoning", displayReasoning, undefined, undefined, true)
+								}
 							}
 							break
 						case "text": {
@@ -2098,13 +2104,20 @@ export class Task {
 									const { sanitizeAssistantText } = await import("@/utils/sanitize")
 									finalReasoning = sanitizeAssistantText(finalReasoning)
 								} catch {}
-								await this.say("reasoning", finalReasoning, undefined, undefined, false)
+								if (finalReasoning.trim().length > 0) {
+									await this.say("reasoning", finalReasoning, undefined, undefined, false)
+								}
 							}
 							assistantMessage += chunk.text
-							// parse raw assistant message into content blocks
+							// parse raw assistant message into content blocks (sanitize artifacts first)
 							const prevLength = this.taskState.assistantMessageContent.length
 
-							this.taskState.assistantMessageContent = parseAssistantMessageV2(assistantMessage)
+							let toParse = assistantMessage
+							try {
+								const { sanitizeAssistantText } = await import("@/utils/sanitize")
+								toParse = sanitizeAssistantText(assistantMessage)
+							} catch {}
+							this.taskState.assistantMessageContent = parseAssistantMessageV2(toParse)
 
 							if (this.taskState.assistantMessageContent.length > prevLength) {
 								this.taskState.userMessageContentReady = false // new content we need to present, reset to false in case previous content set this to true

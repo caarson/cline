@@ -27,6 +27,16 @@ export class NewTaskHandler implements IToolHandler, IPartialBlockHandler {
 	async execute(config: TaskConfig, block: ToolUse): Promise<ToolResponse> {
 		const context: string | undefined = block.params.context
 
+		// Prevent starting a new task while one is active unless explicitly permitted
+		if (!config.strictPlanModeEnabled && config.mode === "act") {
+			return formatResponse.toolResult(
+				[
+					"Do not start a new task while an active task is in progress.",
+					"Continue the current task and use the <task_progress> parameter to track the checklist.",
+				].join("\n"),
+			)
+		}
+
 		// Validate required parameters
 		if (!context) {
 			config.taskState.consecutiveMistakeCount++

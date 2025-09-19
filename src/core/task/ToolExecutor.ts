@@ -398,6 +398,9 @@ export class ToolExecutor {
 
 		this.pushToolResult(result, block)
 
+		// Ensure only one tool is executed per assistant message; further tool blocks will be skipped
+		config.taskState.didAlreadyUseTool = true
+
 		// Handle focus chain updates
 		if (!block.partial && this.focusChainSettings.enabled) {
 			await this.updateFCListFromToolResponse(block.params.task_progress)
